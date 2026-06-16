@@ -1,0 +1,16 @@
+.env
+.env.example
+__pycache__/
+*.pyc
+database/*.db
+database/*.db-*
+database/chroma/
+data/resumes/*
+data/jobs/*
+data/linkedin/*
+!data/resumes/.gitkeep
+!data/jobs/.gitkeep
+!data/linkedin/.gitkeep
+frontend/node_modules/
+frontend/dist/
+backend/uploads/

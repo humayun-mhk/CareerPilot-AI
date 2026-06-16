@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-multipart
+langgraph
+langchain
+langchain-openai
+openai
+pymupdf
+python-dotenv
+pydantic
+requests
+beautifulsoup4
+sqlite-utils
+chromadb
+sentence-transformers
+numpy
