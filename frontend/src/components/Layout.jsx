@@ -1,10 +1,23 @@
 import { NavLink } from 'react-router-dom';
 
 const links = [
-  ['Analyze', '/analyze'],
-  ['Tracker', '/tracker'],
+  ['Dashboard', '/dashboard'],
+  ['Upload Resume', '/upload'],
+  ['Job Analyzer', '/analyze'],
+  ['Match Report', '/match-report'],
+  ['Resume Suggestions', '/resume-suggestions'],
+  ['LinkedIn Optimizer', '/linkedin-optimizer'],
+  ['GitHub Evidence Scanner', '/github-scanner'],
+  ['Project Recommendations', '/project-recommendations'],
+  ['Cover Letter', '/cover-letter'],
+  ['Resume Versioning', '/resume-versioning'],
+  ['Application Tracker', '/tracker'],
+  ['Evidence Graph', '/evidence'],
+  ['Evaluation Report', '/evaluation-report'],
+  ['Agent Tracing', '/agent-tracing'],
+  ['Approval Center', '/approval-center'],
   ['Analytics', '/analytics'],
-  ['Evidence Graph', '/evidence']
+  ['Deployment Status', '/deployment-status']
 ];
 
 export default function Layout({ children }) {
