@@ -3,20 +3,17 @@ from typing import Any
 
 import numpy as np
 
-from ..core.config import CHROMA_PATH
+from ..core.config import CHROMA_PATH, EMBEDDING_PROVIDER
 
 
 class FallbackEmbeddingFunction:
     def __init__(self) -> None:
         self.model = None
-        try:
-            from sentence_transformers import SentenceTransformer
-
-            self.model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-        except Exception:
-            self.model = None
+        self.provider = EMBEDDING_PROVIDER.lower()
 
     def __call__(self, input: list[str]) -> list[list[float]]:
+        if self.provider == "sentence_transformers":
+            self._load_sentence_transformer()
         if self.model is not None:
             try:
                 vectors = self.model.encode(input, normalize_embeddings=True)
@@ -24,6 +21,17 @@ class FallbackEmbeddingFunction:
             except Exception:
                 pass
         return [self._hash_embedding(text) for text in input]
+
+    def _load_sentence_transformer(self) -> None:
+        if self.model is not None:
+            return
+        try:
+            from sentence_transformers import SentenceTransformer
+
+            self.model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        except Exception:
+            self.provider = "hash"
+            self.model = None
 
     @staticmethod
     def _hash_embedding(text: str, dimensions: int = 384) -> list[float]:
@@ -40,6 +48,7 @@ class FallbackEmbeddingFunction:
 
 class RagMemory:
     def __init__(self) -> None:
+        self.initialized = False
         self.available = False
         self.client = None
         self.embedding_function = FallbackEmbeddingFunction()
@@ -48,6 +57,9 @@ class RagMemory:
         self.github_collection = None
 
     def init(self) -> None:
+        if self.initialized:
+            return
+        self.initialized = True
         try:
             import chromadb
 
@@ -69,6 +81,10 @@ class RagMemory:
         except Exception:
             self.available = False
 
+    def _ensure_init(self) -> None:
+        if not self.initialized:
+            self.init()
+
     def add_approved_content(
         self,
         application_id: int,
@@ -76,6 +92,7 @@ class RagMemory:
         cover_letter: str,
         metadata: dict[str, Any],
     ) -> None:
+        self._ensure_init()
         if not self.available or self.approved_collection is None:
             return
         documents = []
@@ -93,6 +110,7 @@ class RagMemory:
             self.approved_collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
 
     def add_evidence_report(self, application_id: int, evidence_report: dict[str, Any]) -> None:
+        self._ensure_init()
         if not self.available or self.evidence_collection is None:
             return
         documents = []
@@ -114,6 +132,7 @@ class RagMemory:
             self.evidence_collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
 
     def add_github_readme_chunks(self, user_id: int, report: dict[str, Any]) -> None:
+        self._ensure_init()
         if not self.available or self.github_collection is None:
             return
         documents = []
@@ -141,6 +160,7 @@ class RagMemory:
             self.github_collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
 
     def retrieve_context(self, query: str, limit: int = 5) -> str:
+        self._ensure_init()
         if not self.available or self.approved_collection is None or not query.strip():
             return ""
         try:
@@ -151,6 +171,7 @@ class RagMemory:
             return ""
 
     def retrieve_github_context(self, query: str, limit: int = 5) -> str:
+        self._ensure_init()
         if not self.available or self.github_collection is None or not query.strip():
             return ""
         try:

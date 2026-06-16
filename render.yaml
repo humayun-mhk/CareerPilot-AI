@@ -31,7 +31,7 @@ services:
       - key: LLM_MAX_RETRIES
         value: "1"
       - key: EMBEDDING_PROVIDER
-        value: sentence_transformers
+        value: hash
       - key: CHROMA_PATH
         value: database/chroma
 

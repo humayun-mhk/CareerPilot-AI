@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 python-multipart
+alembic
 langgraph
 langchain
 langchain-openai
@@ -8,9 +9,12 @@ openai
 pymupdf
 python-dotenv
 pydantic
+psycopg[binary]
 requests
 beautifulsoup4
+sqlalchemy
 sqlite-utils
 chromadb
-sentence-transformers
 numpy
+reportlab
+pdfplumber

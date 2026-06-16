@@ -6,13 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.v1.routes import router as v1_router
 from .core.config import ALLOWED_ORIGINS, PROJECT_NAME, UPLOAD_DIR
 from .db.session import init_db
-from .services.rag_memory import rag_memory
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    rag_memory.init()
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     yield
 
