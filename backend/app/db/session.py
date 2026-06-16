@@ -17,12 +17,15 @@ except ImportError:
 
 
 def _is_postgres_url(database_url: str) -> bool:
-    return database_url.startswith(("postgresql://", "postgres://", "postgresql+psycopg://"))
+    return database_url.startswith(
+        ("postgresql://", "postgres://", "postgresql+psycopg://")
+    )
 
 
 def _ensure_neon_ssl(database_url: str) -> str:
     if not _is_postgres_url(database_url) or "sslmode=" in database_url:
         return database_url
+
     separator = "&" if "?" in database_url else "?"
     return f"{database_url}{separator}sslmode=require"
 
@@ -30,25 +33,39 @@ def _ensure_neon_ssl(database_url: str) -> str:
 def _sqlalchemy_url() -> str:
     if not DATABASE_URL:
         if ENVIRONMENT == "production":
-            raise RuntimeError("DATABASE_URL must be set to a Neon PostgreSQL URL in production.")
+            raise RuntimeError(
+                "DATABASE_URL must be set to a Neon PostgreSQL URL in production."
+            )
         return f"sqlite:///{DATABASE_PATH.as_posix()}"
+
     if ENVIRONMENT == "production" and not _is_postgres_url(DATABASE_URL):
-        raise RuntimeError("Production must use Neon PostgreSQL. SQLite is only allowed locally.")
+        raise RuntimeError(
+            "Production must use Neon PostgreSQL. SQLite is only allowed locally."
+        )
+
     url = _ensure_neon_ssl(DATABASE_URL)
+
     if url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql+psycopg://", 1)
+
     if url.startswith("postgresql://"):
         return url.replace("postgresql://", "postgresql+psycopg://", 1)
+
     return url
 
 
 SQLALCHEMY_DATABASE_URL = _sqlalchemy_url()
 IS_POSTGRES = SQLALCHEMY_DATABASE_URL.startswith("postgresql+psycopg://")
+
+# IMPORTANT:
+# Do NOT put row_factory=dict_row here.
+# SQLAlchemy needs a normal psycopg connection for its internal version check.
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     pool_pre_ping=True,
-    connect_args={"row_factory": dict_row} if IS_POSTGRES and dict_row is not None else {"check_same_thread": False},
+    connect_args={} if IS_POSTGRES else {"check_same_thread": False},
 )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -71,6 +88,7 @@ def _json(data: Any) -> str:
 def _loads(value: str | None, fallback: Any) -> Any:
     if not value:
         return fallback
+
     try:
         return json.loads(value)
     except json.JSONDecodeError:
@@ -93,41 +111,58 @@ class PostgresCursor:
 class PostgresConnection:
     def __init__(self, database_url: str) -> None:
         if psycopg is None or dict_row is None:
-            raise RuntimeError("psycopg is required for PostgreSQL. Install requirements.txt first.")
-        self._conn = engine.raw_connection()
+            raise RuntimeError(
+                "psycopg is required for PostgreSQL. Install requirements.txt first."
+            )
+
+        # SQLAlchemy pooled connection
+        self._raw_conn = engine.raw_connection()
+
+        # Actual psycopg connection behind SQLAlchemy proxy
+        self._driver_conn = (
+            getattr(self._raw_conn, "driver_connection", None)
+            or getattr(self._raw_conn, "dbapi_connection", None)
+            or self._raw_conn
+        )
 
     def __enter__(self) -> "PostgresConnection":
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
         if exc_type is None:
-            self._conn.commit()
+            self.commit()
         else:
-            self._conn.rollback()
-        self._conn.close()
+            self.rollback()
+        self.close()
 
     def execute(self, sql: str, params: tuple[Any, ...] = ()) -> PostgresCursor:
         converted_sql = _to_postgres_sql(sql)
         returning_id = _needs_returning_id(converted_sql)
+
         if returning_id:
             converted_sql = f"{converted_sql.rstrip().rstrip(';')} RETURNING id"
-        cursor = self._conn.cursor()
+
+        # Use dict_row only here, not in create_engine()
+        cursor = self._driver_conn.cursor(row_factory=dict_row)
         cursor.execute(converted_sql, params)
+
         lastrowid = None
+
         if returning_id:
             row = cursor.fetchone()
             if row:
                 lastrowid = int(row["id"])
+
         return PostgresCursor(cursor, lastrowid)
 
     def commit(self) -> None:
-        self._conn.commit()
+        self._raw_conn.commit()
 
     def rollback(self) -> None:
-        self._conn.rollback()
+        self._raw_conn.rollback()
 
     def close(self) -> None:
-        self._conn.close()
+        self._raw_conn.close()
 
 
 def _to_postgres_sql(sql: str) -> str:
@@ -143,14 +178,16 @@ def _needs_returning_id(sql: str) -> bool:
 
 
 def get_connection() -> sqlite3.Connection | PostgresConnection:
-    if DATABASE_DRIVER == "postgresql":
-        return PostgresConnection(DATABASE_URL)
+    if DATABASE_DRIVER == "postgresql" or IS_POSTGRES:
+        return PostgresConnection(SQLALCHEMY_DATABASE_URL)
 
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
     conn = sqlite3.connect(DATABASE_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=OFF")
     conn.execute("PRAGMA synchronous=OFF")
+
     return conn
 
 
@@ -174,6 +211,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS agent_runs (
@@ -187,6 +225,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS evidence_reports (
@@ -201,6 +240,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS analysis_runs (
@@ -215,6 +255,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS github_evidence_scans (
@@ -227,6 +268,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS github_repository_evidence (
@@ -244,6 +286,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS resume_versions (
@@ -265,6 +308,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS resume_exports (
@@ -279,6 +323,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS evaluation_reports (
@@ -300,6 +345,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS agent_traces (
@@ -322,6 +368,7 @@ def init_db() -> None:
             )
             """
         )
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS approval_items (
@@ -338,12 +385,14 @@ def init_db() -> None:
             )
             """
         )
+
         conn.commit()
 
 
 def save_analysis_run(input_data: dict[str, Any], output_data: dict[str, Any]) -> int:
     init_db()
     now = _now()
+
     with get_connection() as conn:
         cursor = conn.execute(
             """
@@ -352,7 +401,14 @@ def save_analysis_run(input_data: dict[str, Any], output_data: dict[str, Any]) -
             )
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (_json(input_data), _json(output_data), output_data.get("approval_status", "pending"), None, now, now),
+            (
+                _json(input_data),
+                _json(output_data),
+                output_data.get("approval_status", "pending"),
+                None,
+                now,
+                now,
+            ),
         )
         conn.commit()
         return int(cursor.lastrowid)
@@ -360,13 +416,20 @@ def save_analysis_run(input_data: dict[str, Any], output_data: dict[str, Any]) -
 
 def get_analysis_run(analysis_id: int) -> dict[str, Any] | None:
     init_db()
+
     with get_connection() as conn:
-        row = conn.execute("SELECT * FROM analysis_runs WHERE id = ?", (analysis_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM analysis_runs WHERE id = ?",
+            (analysis_id,),
+        ).fetchone()
+
     if not row:
         return None
+
     data = dict(row)
     data["input"] = _loads(data.pop("input_json"), {})
     data["output"] = _loads(data.pop("output_json"), {})
+
     return data
 
 
@@ -377,6 +440,7 @@ def update_analysis_run(
     application_id: int | None = None,
 ) -> None:
     init_db()
+
     with get_connection() as conn:
         conn.execute(
             """
@@ -384,16 +448,27 @@ def update_analysis_run(
             SET output_json = ?, approval_status = ?, application_id = ?, updated_at = ?
             WHERE id = ?
             """,
-            (_json(output_data), approval_status, application_id, _now(), analysis_id),
+            (
+                _json(output_data),
+                approval_status,
+                application_id,
+                _now(),
+                analysis_id,
+            ),
         )
         conn.commit()
 
 
-def save_application_record(state: dict[str, Any], approved_outputs: dict[str, Any]) -> int:
+def save_application_record(
+    state: dict[str, Any],
+    approved_outputs: dict[str, Any],
+) -> int:
     init_db()
+
     now = _now()
     follow_up_date = (date.today() + timedelta(days=7)).isoformat()
     match_score = (state.get("skill_gap_report") or {}).get("overall_match", 0)
+
     with get_connection() as conn:
         cursor = conn.execute(
             """
@@ -422,22 +497,39 @@ def save_application_record(state: dict[str, Any], approved_outputs: dict[str, A
         return int(cursor.lastrowid)
 
 
-def save_agent_run(application_id: int, step_name: str, input_json: dict[str, Any], output_json: Any) -> int:
+def save_agent_run(
+    application_id: int,
+    step_name: str,
+    input_json: dict[str, Any],
+    output_json: Any,
+) -> int:
     init_db()
+
     with get_connection() as conn:
         cursor = conn.execute(
             """
             INSERT INTO agent_runs (application_id, step_name, input_json, output_json, created_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (application_id, step_name, _json(input_json), _json(output_json), _now()),
+            (
+                application_id,
+                step_name,
+                _json(input_json),
+                _json(output_json),
+                _now(),
+            ),
         )
         conn.commit()
         return int(cursor.lastrowid)
 
 
-def save_evidence_report(application_id: int, skill_name: str, details: dict[str, Any]) -> int:
+def save_evidence_report(
+    application_id: int,
+    skill_name: str,
+    details: dict[str, Any],
+) -> int:
     init_db()
+
     with get_connection() as conn:
         cursor = conn.execute(
             """
@@ -461,6 +553,7 @@ def save_evidence_report(application_id: int, skill_name: str, details: dict[str
 
 def get_all_applications() -> list[dict[str, Any]]:
     init_db()
+
     with get_connection() as conn:
         rows = conn.execute(
             """
@@ -470,11 +563,13 @@ def get_all_applications() -> list[dict[str, Any]]:
             ORDER BY created_at DESC
             """
         ).fetchall()
+
     return [dict(row) for row in rows]
 
 
 def update_application_status(application_id: int, status: str) -> bool:
     init_db()
+
     with get_connection() as conn:
         cursor = conn.execute(
             "UPDATE applications SET status = ?, updated_at = ? WHERE id = ?",
@@ -486,12 +581,20 @@ def update_application_status(application_id: int, status: str) -> bool:
 
 def get_analytics() -> dict[str, Any]:
     init_db()
+
     with get_connection() as conn:
-        total = conn.execute("SELECT COUNT(*) AS count FROM applications").fetchone()["count"]
-        average = conn.execute("SELECT AVG(match_score) AS avg FROM applications").fetchone()["avg"] or 0
+        total = conn.execute(
+            "SELECT COUNT(*) AS count FROM applications"
+        ).fetchone()["count"]
+
+        average = conn.execute(
+            "SELECT AVG(match_score) AS avg FROM applications"
+        ).fetchone()["avg"] or 0
+
         statuses = conn.execute(
             "SELECT status, COUNT(*) AS count FROM applications GROUP BY status ORDER BY count DESC"
         ).fetchall()
+
         recent = conn.execute(
             """
             SELECT id, company_name, job_title, match_score, status, created_at
@@ -500,6 +603,7 @@ def get_analytics() -> dict[str, Any]:
             LIMIT 5
             """
         ).fetchall()
+
     return {
         "total_applications": total,
         "average_match_score": round(float(average), 2),
@@ -510,8 +614,10 @@ def get_analytics() -> dict[str, Any]:
 
 def get_evidence_graph(application_id: int | None = None) -> dict[str, list[dict[str, Any]]]:
     init_db()
+
     params: tuple[Any, ...] = ()
     where = ""
+
     if application_id is not None:
         where = "WHERE e.application_id = ?"
         params = (application_id,)
@@ -531,15 +637,23 @@ def get_evidence_graph(application_id: int | None = None) -> dict[str, list[dict
 
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
+
     for row in rows:
         app_node = f"application-{row['application_id']}"
         skill_node = f"skill-{row['skill_name']}"
+
         nodes[app_node] = {
             "id": app_node,
             "label": f"{row['company_name']} - {row['job_title']}".strip(" -"),
             "type": "application",
         }
-        nodes[skill_node] = {"id": skill_node, "label": row["skill_name"], "type": "skill"}
+
+        nodes[skill_node] = {
+            "id": skill_node,
+            "label": row["skill_name"],
+            "type": "skill",
+        }
+
         edges.append(
             {
                 "source": app_node,
@@ -548,12 +662,15 @@ def get_evidence_graph(application_id: int | None = None) -> dict[str, list[dict
                 "status": row["status"],
             }
         )
+
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
 def save_github_evidence_scan(user_id: int, report: dict[str, Any]) -> int:
     init_db()
+
     now = _now()
+
     with get_connection() as conn:
         cursor = conn.execute(
             """
@@ -570,7 +687,9 @@ def save_github_evidence_scan(user_id: int, report: dict[str, Any]) -> int:
                 now,
             ),
         )
+
         scan_id = int(cursor.lastrowid)
+
         for project in report.get("projects", []):
             conn.execute(
                 """
@@ -592,12 +711,14 @@ def save_github_evidence_scan(user_id: int, report: dict[str, Any]) -> int:
                     now,
                 ),
             )
+
         conn.commit()
         return scan_id
 
 
 def get_latest_github_evidence(user_id: int) -> dict[str, Any] | None:
     init_db()
+
     with get_connection() as conn:
         row = conn.execute(
             """
@@ -608,15 +729,19 @@ def get_latest_github_evidence(user_id: int) -> dict[str, Any] | None:
             """,
             (user_id,),
         ).fetchone()
+
     if not row:
         return None
+
     data = dict(row)
     data["report"] = _loads(data.pop("report_json"), {})
+
     return data
 
 
 def save_evaluation_report(report: dict[str, Any]) -> int:
     init_db()
+
     with get_connection() as conn:
         cursor = conn.execute(
             """
@@ -645,12 +770,14 @@ def save_evaluation_report(report: dict[str, Any]) -> int:
                 report.get("created_at") or _now(),
             ),
         )
+
         conn.commit()
         return int(cursor.lastrowid)
 
 
 def get_evaluations(user_id: int) -> list[dict[str, Any]]:
     init_db()
+
     with get_connection() as conn:
         rows = conn.execute(
             """
@@ -665,17 +792,25 @@ def get_evaluations(user_id: int) -> list[dict[str, Any]]:
             """,
             (user_id,),
         ).fetchall()
+
     return [dict(row) for row in rows]
 
 
 def get_evaluation_detail(evaluation_id: int) -> dict[str, Any] | None:
     init_db()
+
     with get_connection() as conn:
-        row = conn.execute("SELECT * FROM evaluation_reports WHERE id = ?", (evaluation_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM evaluation_reports WHERE id = ?",
+            (evaluation_id,),
+        ).fetchone()
+
     if not row:
         return None
+
     data = dict(row)
     data["issues_found"] = _loads(data.pop("issues_json"), [])
     data["blocked_claims"] = _loads(data.pop("blocked_claims_json"), [])
     data["recommendations"] = _loads(data.pop("recommendations_json"), [])
+
     return data
