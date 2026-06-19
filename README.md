@@ -193,4 +193,3 @@ Set the Render environment variables from `.env.example`, including `OPENAI_API_
 - Background jobs for long analyses
 - More advanced RAG memory filters
 - Export to PDF and DOCX
-- Render monitoring, CI/CD, and production observability
