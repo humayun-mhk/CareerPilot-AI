@@ -1,5 +1,7 @@
 # CareerPilot AI
 
+Live Demo: https://careerpilot-ai-frontend-h9kh.onrender.com/
+
 CareerPilot AI is a full-stack multi-agent career assistant that analyzes a resume, LinkedIn profile, and job description, then produces evidence-aware career assets for a target role.
 
 ## Pitch
@@ -36,6 +38,7 @@ Job seekers often rewrite resumes and cover letters manually without knowing whi
 - Vector memory: ChromaDB at `database/chroma`
 - PDF parsing: PyMuPDF
 - LLM: OpenAI through LangChain when configured, fallback logic otherwise
+- Deployment: Render
 
 ## Agents
 
@@ -170,6 +173,18 @@ Open:
 http://localhost:5173
 ```
 
+## Deployment
+
+CareerPilot AI is deployed on Render.
+
+For Render deployments, the backend entrypoint is:
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+```
+
+Set the Render environment variables from `.env.example`, including `OPENAI_API_KEY` if LLM-powered generation is needed. The app still supports fallback mode when `OPENAI_API_KEY` is not configured.
+
 ## Future Improvements
 
 - User authentication
@@ -178,4 +193,4 @@ http://localhost:5173
 - Background jobs for long analyses
 - More advanced RAG memory filters
 - Export to PDF and DOCX
-- Deployment scripts for Docker and cloud hosting
+- Render monitoring, CI/CD, and production observability
