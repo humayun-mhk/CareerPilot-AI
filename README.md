@@ -42,17 +42,45 @@ Job seekers often rewrite resumes and cover letters manually without knowing whi
 
 ## Agents
 
-1. Document Parser
-2. Resume Analyzer Agent
-3. LinkedIn Optimizer Agent
-4. Job Research Agent
-5. Evidence Verification Agent
-6. Skill Gap Agent
-7. Resume Tailoring Agent
-8. Project Recommender Agent
-9. Cover Letter Agent
-10. Human Approval
-11. Application Tracker
+Agents are the backend workers that process the user's resume, job description, LinkedIn profile, GitHub evidence, and final application data. Each agent has one clear job in the workflow.
+
+| Agent | Simple Work | Keep? |
+|---|---|---|
+| Document Parser | Reads the resume PDF, LinkedIn PDF/text, job description, GitHub text, and portfolio text. | Keep |
+| Resume Analyzer Agent | Understands the resume: skills, projects, weak bullet points, education, and experience. | Keep |
+| Job Research Agent | Understands the job: required skills, tools, seniority, responsibilities, and ATS keywords. | Keep |
+| Evidence Verification Agent | Checks if the user's claims are real and supported by resume, LinkedIn, GitHub, or portfolio evidence. | Keep. Very important |
+| Skill Gap Agent | Compares the candidate against the job and finds strong, weak, and missing skills. | Keep |
+| Resume Tailoring Agent | Writes better resume bullets based on real evidence only. | Keep |
+| Cover Letter Agent | Writes a job-specific cover letter using the candidate's real strengths. | Keep |
+| Project Recommender Agent | Suggests portfolio projects for missing or weak skills. | Keep |
+| LinkedIn Optimizer Agent | Suggests a better LinkedIn headline, About section, skills order, and featured projects. | Keep if the LinkedIn feature is needed |
+| Human Approval Agent | Makes sure the user approves or edits resume and cover letter content before saving. | Keep. Important |
+| Application Tracker Agent | Saves approved application data, match score, generated content, and application status. | Keep |
+
+In simple words: agents do the thinking and processing. The frontend pages only show the user the results and let the user take action.
+
+## Pages That Are Not Agents
+
+These are frontend screens, not backend agents. They may show agent results, but they do not do the agent work by themselves.
+
+- Dashboard
+- Upload Resume
+- Job Analyzer
+- Match Report
+- Resume Suggestions
+- LinkedIn Optimizer
+- GitHub Evidence Scanner
+- Project Recommendations
+- Cover Letter
+- Resume Versioning
+- Application Tracker
+- Evidence Graph
+- Evaluation Report
+- Agent Tracing
+- Approval Center
+- Analytics
+- Deployment Status
 
 ## Database Schema
 
@@ -193,3 +221,4 @@ Set the Render environment variables from `.env.example`, including `OPENAI_API_
 - Background jobs for long analyses
 - More advanced RAG memory filters
 - Export to PDF and DOCX
+- Render monitoring, CI/CD, and production observability
