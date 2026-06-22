@@ -2,7 +2,8 @@
 
 Live Demo: https://careerpilot-ai-frontend-h9kh.onrender.com/
 
-CareerPilot AI is a full-stack multi-agent career assistant that analyzes a resume, LinkedIn profile, and job description, then produces evidence-aware career assets for a target role.
+
+CareerPilot AI is a full-stack AI career assistant that analyzes a resume, LinkedIn profile, GitHub evidence, portfolio context, and job description. It helps users understand job fit, improve career documents, verify claims with evidence, and track applications.
 
 ## Pitch
 
@@ -18,127 +19,116 @@ Job seekers often rewrite resumes and cover letters manually without knowing whi
 - LinkedIn PDF upload or pasted LinkedIn text
 - Job title, company, link, and description input
 - LangGraph multi-agent workflow
+- GitHub evidence scanner
 - Evidence-aware skill verification
 - Skill gap and match scoring
 - Tailored resume bullets
+- Resume versioning and exports
 - Cover letter generation
 - Portfolio project recommendations
 - Human approval before saving
-- SQLite application tracker
+- Application tracker
 - ChromaDB memory for approved content and evidence
-- Analytics and evidence graph APIs
+- Evaluation report
+- Agent tracing
+- Analytics and evidence graph
 - Fallback logic when `OPENAI_API_KEY` is missing
 
 ## Architecture
 
 - Frontend: React JS with Vite
 - Backend: FastAPI
-- Workflow: LangGraph using the existing Step 2 agents in `src/agents`
-- Database: SQLite at `database/careerpilot.db`
+- Workflow: LangGraph multi-agent orchestration
+- Production database: Neon PostgreSQL through `DATABASE_URL`
+- Local database fallback: SQLite only when `DATABASE_URL` is not set
 - Vector memory: ChromaDB at `database/chroma`
-- PDF parsing: PyMuPDF
+- PDF parsing: PyMuPDF and pdfplumber
 - LLM: OpenAI through LangChain when configured, fallback logic otherwise
+- Embeddings: hash fallback by default, optional SentenceTransformers
 - Deployment: Render
 
 ## Agents
 
-Agents are the backend workers that process the user's resume, job description, LinkedIn profile, GitHub evidence, and final application data. Each agent has one clear job in the workflow.
+The backend uses LangGraph to pass one shared state through multiple agents. Each agent adds a focused result to the state and sends it to the next step.
 
-| Agent | Simple Work | Keep? |
-|---|---|---|
-| Document Parser | Reads the resume PDF, LinkedIn PDF/text, job description, GitHub text, and portfolio text. | Keep |
-| Resume Analyzer Agent | Understands the resume: skills, projects, weak bullet points, education, and experience. | Keep |
-| Job Research Agent | Understands the job: required skills, tools, seniority, responsibilities, and ATS keywords. | Keep |
-| Evidence Verification Agent | Checks if the user's claims are real and supported by resume, LinkedIn, GitHub, or portfolio evidence. | Keep. Very important |
-| Skill Gap Agent | Compares the candidate against the job and finds strong, weak, and missing skills. | Keep |
-| Resume Tailoring Agent | Writes better resume bullets based on real evidence only. | Keep |
-| Cover Letter Agent | Writes a job-specific cover letter using the candidate's real strengths. | Keep |
-| Project Recommender Agent | Suggests portfolio projects for missing or weak skills. | Keep |
-| LinkedIn Optimizer Agent | Suggests a better LinkedIn headline, About section, skills order, and featured projects. | Keep if the LinkedIn feature is needed |
-| Human Approval Agent | Makes sure the user approves or edits resume and cover letter content before saving. | Keep. Important |
-| Application Tracker Agent | Saves approved application data, match score, generated content, and application status. | Keep |
+Workflow:
 
-In simple words: agents do the thinking and processing. The frontend pages only show the user the results and let the user take action.
+```text
+Document Parser
+-> Resume Analyzer
+-> LinkedIn Optimizer
+-> GitHub Evidence Scanner
+-> Job Research
+-> Skill Gap
+-> Evidence Verification
+-> Resume Tailoring
+-> Project Recommender
+-> Cover Letter
+-> Evaluation
+-> Human Approval
+-> Application Tracker
+```
 
-## Pages That Are Not Agents
+| Agent | Responsibility |
+|---|---|
+| Document Parser | Reads uploaded resume and LinkedIn files, cleans text, and prepares workflow input. |
+| Resume Analyzer Agent | Extracts resume skills, projects, experience, education, weak points, and resume strength. |
+| LinkedIn Optimizer Agent | Suggests LinkedIn headline, About section, skill order, and profile improvements. |
+| GitHub Evidence Agent | Scans GitHub evidence and identifies projects, skills, README details, and proof signals. |
+| Job Research Agent | Extracts job skills, tools, responsibilities, seniority, job category, and ATS keywords. |
+| Skill Gap Agent | Compares job requirements against candidate evidence and calculates gaps. |
+| Evidence Verification Agent | Checks whether resume and skill claims are supported by resume, LinkedIn, GitHub, or portfolio evidence. |
+| Resume Tailoring Agent | Creates honest, ATS-friendly resume bullets using supported evidence only. |
+| Project Recommender Agent | Recommends portfolio projects for missing or weak skills. |
+| Cover Letter Agent | Generates a job-specific cover letter using verified strengths. |
+| Evaluation Agent | Reviews generated outputs for quality, evidence use, and improvement score. |
+| Human Approval Agent | Holds sensitive content for user review before saving or export. |
+| Application Tracker Agent | Saves approved application data, match score, status, and follow-up information. |
 
-These are frontend screens, not backend agents. They may show agent results, but they do not do the agent work by themselves.
+## Database
 
-- Dashboard
-- Upload Resume
-- Job Analyzer
-- Match Report
-- Resume Suggestions
-- LinkedIn Optimizer
-- GitHub Evidence Scanner
-- Project Recommendations
-- Cover Letter
-- Resume Versioning
-- Application Tracker
-- Evidence Graph
-- Evaluation Report
-- Agent Tracing
-- Approval Center
-- Analytics
-- Deployment Status
+Production uses Neon PostgreSQL. The backend reads the production database connection from `DATABASE_URL`.
 
-## Database Schema
+SQLite is only a local development fallback when `DATABASE_URL` is not set. In production, `ENVIRONMENT=production` requires a PostgreSQL/Neon URL.
 
-`applications`
+Main tables:
 
-- `id`
-- `company_name`
-- `job_title`
-- `job_link`
-- `job_description`
-- `match_score`
-- `status`
-- `follow_up_date`
-- `approved_resume_bullets`
-- `approved_cover_letter`
-- `created_at`
-- `updated_at`
+- `applications`
+- `agent_runs`
+- `evidence_reports`
+- `analysis_runs`
+- `github_evidence_scans`
+- `github_repository_evidence`
+- `resume_versions`
+- `resume_exports`
+- `evaluation_reports`
+- `agent_traces`
+- `approval_items`
 
-`agent_runs`
-
-- `id`
-- `application_id`
-- `step_name`
-- `input_json`
-- `output_json`
-- `created_at`
-
-`evidence_reports`
-
-- `id`
-- `application_id`
-- `skill_name`
-- `evidence_json`
-- `confidence`
-- `status`
-- `created_at`
-
-`analysis_runs`
-
-- `id`
-- `input_json`
-- `output_json`
-- `approval_status`
-- `application_id`
-- `created_at`
-- `updated_at`
+Alembic is included for database migrations.
 
 ## RAG Memory
 
-ChromaDB stores approved resume bullets, cover letters, and evidence reports. Future analyses retrieve relevant approved content by job title and job description and inject that context into the LangGraph state as `rag_context`.
+CareerPilot AI uses ChromaDB for vector memory.
+
+Stored memory includes:
+
+- Approved resume bullets
+- Approved cover letters
+- Evidence reports
+- GitHub README evidence chunks
+
+The app can retrieve relevant memory and add it to the LangGraph state for future analysis.
 
 Embedding behavior:
 
-- First tries SentenceTransformers with `all-MiniLM-L6-v2`
-- Falls back to deterministic hash embeddings if SentenceTransformers is unavailable
-- Does not require an OpenAI API key for embeddings
+- `EMBEDDING_PROVIDER=hash` is the default production-safe fallback
+- SentenceTransformers can be used when configured
+- OpenAI embeddings are not required for fallback mode
 
 ## API Endpoints
+
+Important backend endpoints:
 
 - `GET /api/health`
 - `POST /api/analyze`
@@ -149,45 +139,104 @@ Embedding behavior:
 - `GET /api/analytics`
 - `GET /api/evidence-graph`
 - `GET /api/memory/search`
+- `POST /api/github/scan`
+- `GET /api/resume-versions/{user_id}`
+- `GET /api/resume-versions/detail/{version_id}`
+- `POST /api/resume-versions/compare`
+- `POST /api/resume-versions/export`
+- `GET /api/evaluations/{user_id}`
+- `GET /api/evaluations/detail/{evaluation_id}`
+- `GET /api/traces/{user_id}`
+- `GET /api/traces/run/{graph_run_id}`
+- `GET /api/approvals/pending/{user_id}`
+- `GET /api/approvals/history/{user_id}`
+- `POST /api/approvals/approve`
+- `POST /api/approvals/reject`
+- `POST /api/approvals/regenerate`
+- `GET /api/deployment/status`
 
 ## Frontend Pages
 
-- `/analyze` - upload files and run analysis
-- `/approval/:analysisId` - review, edit, approve, or reject generated content
-- `/tracker` - view applications and update status
-- `/analytics` - view application metrics
+- `/dashboard` - main starting point
+- `/upload` - upload resume and LinkedIn files
+- `/analyze` - submit job details and run the workflow
+- `/match-report` - view match score and skill gaps
+- `/resume-suggestions` - view tailored resume bullets
+- `/linkedin-optimizer` - view LinkedIn recommendations
+- `/github-scanner` - scan GitHub evidence
+- `/project-recommendations` - view suggested portfolio projects
+- `/cover-letter` - view generated cover letter
+- `/resume-versioning` - track resume versions, approvals, exports, and comparisons
+- `/approval/:analysisId` - review one generated analysis
+- `/approval-center` - approve, reject, or request regeneration
+- `/tracker` - track job applications and statuses
+- `/analytics` - view metrics
 - `/evidence` - view evidence graph data
+- `/evaluation-report` - view evaluation results
+- `/agent-tracing` - inspect workflow traces
+- `/deployment-status` - view backend, frontend, database, and vector-memory status
 
-## Setup
+## Application Tracker vs Resume Versioning
+
+Application Tracker and Resume Versioning are related, but they are not the same feature.
+
+Application Tracker manages job applications. It tracks company, role, job link, match score, status, and follow-up information.
+
+Resume Versioning manages generated resumes. It tracks which resume version was created for which job, score changes, approval status, exports, and version comparisons.
+
+In simple words:
+
+- Use Application Tracker to manage jobs.
+- Use Resume Versioning to manage tailored resumes.
+
+## Environment Variables
+
+Backend environment:
+
+```env
+PROJECT_NAME=CareerPilot AI API
+ENVIRONMENT=production
+DATABASE_URL=postgresql://your_neon_connection_url
+JWT_SECRET_KEY=your_secret_key
+OPENAI_API_KEY=your_api_key_here
+LLM_PROVIDER=openai
+MODEL_NAME=gpt-4o-mini
+EMBEDDING_PROVIDER=hash
+CHROMA_PATH=database/chroma
+CORS_ORIGINS=https://careerpilot-ai-frontend-h9kh.onrender.com,http://localhost:5173
+```
+
+Frontend environment:
+
+```env
+VITE_API_BASE_URL=https://careerpilot-ai-api.onrender.com/api
+```
+
+`OPENAI_API_KEY` is optional. If it is missing, the project uses fallback logic for skill extraction, scoring, and generated placeholder content.
+
+## Local Setup
 
 ```powershell
 cd f:\Agentic_AI\Resume\careerpilot-ai
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env
 ```
 
-Optional `.env`:
-
-```env
-OPENAI_API_KEY=your_api_key_here
-LLM_PROVIDER=openai
-MODEL_NAME=gpt-4o-mini
-FRONTEND_ORIGIN=http://localhost:5173
-DATABASE_PATH=database/careerpilot.db
-CHROMA_PATH=database/chroma
-```
-
-## Run Commands
-
-Backend:
+Run backend from the project root:
 
 ```powershell
-uvicorn backend.main:app --reload --port 8000
+uvicorn backend.app.main:app --reload --port 8000
 ```
 
-Frontend:
+Or run backend from inside the `backend` folder:
+
+```powershell
+cd backend
+uvicorn app.main:app --reload --port 8000
+```
+
+Install and run frontend:
 
 ```powershell
 cd frontend
@@ -201,17 +250,40 @@ Open:
 http://localhost:5173
 ```
 
-## Deployment
+Local backend health check:
 
-CareerPilot AI is deployed on Render.
-
-For Render deployments, the backend entrypoint is:
-
-```bash
-uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+```text
+http://localhost:8000/api/health
 ```
 
-Set the Render environment variables from `.env.example`, including `OPENAI_API_KEY` if LLM-powered generation is needed. The app still supports fallback mode when `OPENAI_API_KEY` is not configured.
+## Deployment
+
+CareerPilot AI is deployed on Render. Render reads `render.yaml`.
+
+Backend Render service:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Backend details:
+
+- Root directory: `backend`
+- Build command: `pip install -r requirements.txt`
+- Health check path: `/api/health`
+- Production database: Neon PostgreSQL through `DATABASE_URL`
+
+Frontend Render service:
+
+```bash
+npm ci && npm run build
+```
+
+Frontend details:
+
+- Root directory: `frontend`
+- Publish directory: `dist`
+- API URL: `VITE_API_BASE_URL=https://careerpilot-ai-api.onrender.com/api`
 
 ## Future Improvements
 
