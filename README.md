@@ -2,6 +2,7 @@
 
 Live Demo: https://careerpilot-ai-frontend-h9kh.onrender.com/
 
+Backend API: https://careerpilot-ai-api.onrender.com/api
 
 CareerPilot AI is a full-stack AI career assistant that analyzes a resume, LinkedIn profile, GitHub evidence, portfolio context, and job description. It helps users understand job fit, improve career documents, verify claims with evidence, and track applications.
 
